@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const { getAllItems } = require('./businessCentral');
+const { getAllItems,createOrder,updateOrderStatus ,authMiddleware} = require('./businessCentral');
 const { getToken } = require('./auth');
 
 const app = express();
@@ -13,7 +13,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.post('/tryblend/api/items', async (req, res) => {
+app.post('/tryblend/api/items',authMiddleware, async (req, res) => {
   try {
     const result = await getAllItems(req);
     res.json(result.parsed);
@@ -25,13 +25,35 @@ app.post('/tryblend/api/items', async (req, res) => {
   }
 });
 
-app.get('/tryblend/api/items', async (req, res) => {
+app.get('/tryblend/api/items',authMiddleware, async (req, res) => {
   try {
     const result = await getAllItems(req);
     res.json(result.parsed);
   } catch (error) {
     res.status(500).json({
       error: 'Could not retrieve items',
+      message: error.response?.data || error.message
+    });
+  }
+});
+app.post('/tryblend/api/create-order',authMiddleware, async (req, res) => {
+  try {
+    const result = await createOrder(req);
+    res.json(result.parsed);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Could not create order',
+      message: error.response?.data || error.message
+    });
+  }
+});
+app.post('/tryblend/api/order-status',authMiddleware, async (req, res) => {
+  try {
+    const result = await updateOrderStatus(req);
+    res.json(result.parsed);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Could not update order status',
       message: error.response?.data || error.message
     });
   }
