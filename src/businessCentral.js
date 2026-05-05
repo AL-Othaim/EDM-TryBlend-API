@@ -1,5 +1,8 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const { getToken } = require('./auth');
+
+const issuedTokens = new Set();
 
 function parseBusinessCentralResponse(data) {
   if (data && typeof data.value === 'string') {
@@ -73,15 +76,22 @@ async function updateOrderStatus() {
     parsed: parseBusinessCentralResponse(data)
   };
 }
-function authMiddleware(req, res, next) {
-  const apiKey = req.headers['x-api-key'];
+function generateTryblendToken() {
+  const token = crypto.randomBytes(32).toString('hex');
+  issuedTokens.add(token);
+  return token;
+}
 
-  if (!apiKey) {
-    return res.status(401).json({ error: 'Missing API key' });
+function authMiddleware(req, res, next) {
+  const authorization = req.headers.authorization || '';
+  const [scheme, token] = authorization.split(' ');
+
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({ error: 'Missing bearer token' });
   }
 
-  if (apiKey !== process.env.API_SECRET) {
-    return res.status(403).json({ error: 'Invalid API key' });
+  if (!issuedTokens.has(token)) {
+    return res.status(403).json({ error: 'Invalid bearer token' });
   }
 
   next();
@@ -92,5 +102,6 @@ module.exports = {
   parseBusinessCentralResponse,
   createOrder,
   updateOrderStatus,
+  generateTryblendToken,
   authMiddleware
 };

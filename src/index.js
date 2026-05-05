@@ -1,8 +1,7 @@
 require('dotenv').config();
 
 const express = require('express');
-const { getAllItems,createOrder,updateOrderStatus ,authMiddleware} = require('./businessCentral');
-const { getToken } = require('./auth');
+const { getAllItems,createOrder,updateOrderStatus ,generateTryblendToken,authMiddleware} = require('./businessCentral');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -57,6 +56,23 @@ app.post('/tryblend/api/order-status',authMiddleware, async (req, res) => {
       message: error.response?.data || error.message
     });
   }
+});
+app.get('/tryblend/api/login', async (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Missing username or password' });
+  }
+
+  if (
+    username != process.env.TRYBLEND_USERNAME ||
+    password != process.env.TRYBLEND_PASSWORD
+  ) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  const token = generateTryblendToken();
+  res.json({ token: `Bearer ${token}` });
 });
 
 app.listen(port, () => {
