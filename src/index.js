@@ -57,18 +57,18 @@ app.post('/tryblend/api/order-status',authMiddleware, async (req, res) => {
     });
   }
 });
-app.get('/tryblend/api/login', async (req, res) => {
-  const { username, password } = req.body || {};
+app.post('/tryblend/api/login', async (req, res) => {
+  const { email, password } = req.body || {};
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Missing username or password' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password' });
   }
 
   if (
-    username != process.env.TRYBLEND_USERNAME ||
+    email != process.env.TRYBLEND_EMAIL ||
     password != process.env.TRYBLEND_PASSWORD
   ) {
-    return res.status(401).json({ error: 'Invalid username or password' });
+    return res.status(401).json({ error: 'Invalid email or password' });
   }
 
   const token = generateTryblendToken();
