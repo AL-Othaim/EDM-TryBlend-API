@@ -72,7 +72,7 @@ app.post('/tryblend/api/login', async (req, res) => {
   }
 
   const token = generateTryblendToken();
-  res.json({ token: `Bearer ${token}` });
+  res.json({ access_token: `Bearer ${token}` });
 });
 
 app.listen(port, () => {
