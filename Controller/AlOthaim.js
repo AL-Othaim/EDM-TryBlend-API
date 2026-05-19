@@ -262,10 +262,10 @@ const CreateTestOrder = async (req, res) => {
       return res.status(400).json({ status: 'error', error: 'Missing url' });
     }
 
-    console.log('ALOthaim', body)
+    // console.log('ALOthaim', body)
     const XmlText = ConvertJsonOrderToXml(body)
 
-    console.log('Request XML AlOthaim: ', XmlText)
+    // console.log('Request XML AlOthaim: ', XmlText)
 
     const token = await getToken()
 
@@ -290,12 +290,11 @@ const CreateTestOrder = async (req, res) => {
       return res.status(400).json({ status: "error", error: errorText });
 
 
-    console.log('Response XML PBCO: ', data)
+    // console.log('Response XML PBCO: ', data)
     res.set('Content-Type', 'application/xml');
-    console.log('here');
     return res.send(data);
   } catch (error) {
-    console.log('PBCO', error)
+    // console.log('PBCO', error)
     if (error?.response?.data) {
       const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true }; // Optional settings
       const responseJson = JSON.parse(xml2js.xml2json(error.response.data, options));
