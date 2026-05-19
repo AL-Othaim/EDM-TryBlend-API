@@ -1,8 +1,96 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const { getToken } = require('./auth');
+const OrderJson = require('../Models/Order.json');
+const xml2js = require('xml-js');
 
-const issuedTokens = new Set();
+const TOKEN_EXPIRES_IN_SECONDS = 24 * 60 * 60;
+
+function base64UrlEncode(value) {
+  return Buffer.from(value)
+    .toString('base64url');
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(value, 'base64url').toString('utf8');
+}
+
+function getJwtSecret() {
+  return process.env.JWT_SECRET_KEY || process.env.TRYBLEND_PASSWORD;
+}
+
+function createJwt(payload) {
+  const secret = getJwtSecret();
+
+  if (!secret) {
+    throw new Error('Missing JWT_SECRET_KEY in .env');
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = {
+    alg: 'HS256',
+    typ: 'JWT'
+  };
+  const body = {
+    ...payload,
+    iat: now,
+    exp: now + TOKEN_EXPIRES_IN_SECONDS
+  };
+
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedBody = base64UrlEncode(JSON.stringify(body));
+  const unsignedToken = `${encodedHeader}.${encodedBody}`;
+  const signature = crypto
+    .createHmac('sha256', secret)
+    .update(unsignedToken)
+    .digest('base64url');
+
+  return `${unsignedToken}.${signature}`;
+}
+
+function verifyJwt(token) {
+  const secret = getJwtSecret();
+
+  if (!secret) {
+    throw new Error('Missing JWT_SECRET_KEY in .env');
+  }
+
+  const [encodedHeader, encodedBody, signature] = token.split('.');
+
+  if (!encodedHeader || !encodedBody || !signature) {
+    throw new Error('Invalid token');
+  }
+
+  const unsignedToken = `${encodedHeader}.${encodedBody}`;
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(unsignedToken)
+    .digest('base64url');
+  const actualSignature = Buffer.from(signature);
+  const validSignature = Buffer.from(expectedSignature);
+
+  if (
+    actualSignature.length !== validSignature.length ||
+    !crypto.timingSafeEqual(actualSignature, validSignature)
+  ) {
+    throw new Error('Invalid token');
+  }
+
+  const payload = JSON.parse(base64UrlDecode(encodedBody));
+
+  if (payload.exp && Math.floor(Date.now() / 1000) >= payload.exp) {
+    throw new Error('Token expired');
+  }
+
+  return payload;
+}
+
+function generateGUID() {
+  return crypto.randomUUID();
+}
+
+
+
 
 function parseBusinessCentralResponse(data) {
   if (data && typeof data.value === 'string') {
@@ -76,10 +164,11 @@ async function updateOrderStatus() {
     parsed: parseBusinessCentralResponse(data)
   };
 }
-function generateTryblendToken() {
-  const token = crypto.randomBytes(32).toString('hex');
-  issuedTokens.add(token);
-  return token;
+function generateTryblendToken(email) {
+  return createJwt({
+    sub: email,
+    email
+  });
 }
 
 function authMiddleware(req, res, next) {
@@ -90,8 +179,10 @@ function authMiddleware(req, res, next) {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
 
-  if (!issuedTokens.has(token)) {
-    return res.status(403).json({ error: 'Invalid bearer token' });
+  try {
+    req.user = verifyJwt(token);
+  } catch (error) {
+    return res.status(403).json({ error: error.message });
   }
 
   next();
@@ -151,31 +242,38 @@ function login(req, res) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
 
-  const token = generateTryblendToken();
+  let token;
+
+  try {
+    token = generateTryblendToken(email);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
   return res.json({ access_token: `Bearer ${token}` });
 }
 
-const createtestOrder = async (req, res) => {
-
+const CreateTestOrder = async (req, res) => {
   try {
     const body = req.body
+    const url = process.env.BUSINESS_CENTRAL_CREATE_TEXT_ORDER_URL;
+
+    if (!url) {
+      return res.status(400).json({ status: 'error', error: 'Missing url' });
+    }
+
     console.log('ALOthaim', body)
     const XmlText = ConvertJsonOrderToXml(body)
 
-    console.log('Request XML PBCO: ', XmlText)
+    console.log('Request XML AlOthaim: ', XmlText)
 
-    const url = BUSINESS_CENTRAL_CREATE_ORDER_URL
+    const token = await getToken()
 
-    const { url, username, password } = pbcoStores?.[body.posLocationId.toLowerCase()]?.connection
-
-    console.log(pbcoStores?.[body.posLocationId.toLowerCase()]?.connection)
-
-    const token = Buffer.from(`${username}:${password}`).toString('base64')
     const { data } = await axios.post(url, XmlText, {
       headers: {
-        Authorization: `Basic ${token}`,
         SOAPAction: 'urn:microsoft-dynamics-schemas/codeunit/EDM_MobilePosSave',
-        'Content-Type': 'application/xml'
+        'Content-Type': 'application/xml',
+        Authorization: `Bearer ${token}`
       }
     })
 
@@ -194,6 +292,7 @@ const createtestOrder = async (req, res) => {
 
     console.log('Response XML PBCO: ', data)
     res.set('Content-Type', 'application/xml');
+    console.log('here');
     return res.send(data);
   } catch (error) {
     console.log('PBCO', error)
@@ -212,143 +311,75 @@ const ConvertJsonOrderToXml = (body) => {
 
   const ID = generateGUID();
   const dateTime = new Date().toISOString();
-
-  const transactionTemplate =
-    dataJson.Envelope.Body.MobilePosSave
-      .mobileTransactionXML.MobileTransaction;
-
-  // ------------------------
-  // STATUS MAPPING
-  // ------------------------
-  const statusMap = {
-    PENDING: 2,
-    ACCEPTED: 2,
-    PREPARING: 2,
-    CANCELED: 8,
-    REJECTED: 8,
-    TIME_OUT: 8,
-  };
-
-  // ------------------------
-  // MOBILE TRANSACTION
-  // ------------------------
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction = {
-    ...transactionTemplate,
+    _attributes: {
+      xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"
+    },
 
     Id: ID,
     StoreId: body.branch_id,
+    TerminalId: "DCT01",
+    StaffId: "1",
     TransDate: dateTime,
 
-    DeliverECTTransId: body.partner_reference,
-    AggregatorOrderID: body.partner_reference,
-
-    TransactionType: statusMap[body.status] || 2,
-
+    CurrencyCode: body.currency || "",
+    CurrencyFactor: 1,
+    GenBusPostingGroup: "",
+    VATBusPostingGroup: "",
+    PriceGroupCode: "",
+    CustomerId: "",
+    CustDiscGroup: "",
+    MemberCardNo: "",
+    MemberPriceGroupCode: "",
+    ManualTotalDiscPercent: 0,
     ManualTotalDiscAmount: 0,
-
-    NetAmount: body.subtotal,
-    GrossAmount: body.total,
-    TAXAmount: body.tax,
-
-    Comment: body.note || "",
-
-    PaymentType: "cash",
-
-    MemberMobNo: body.customer?.phone || "",
-    MemberName: body.customer?.name || "",
-    MemberEmail: "",
-
-    Channel: body.brand_id,
+    SourceType: 0,
+    NetAmount: body.subtotal || 0,
+    GrossAmount: body.total || 0,
+    Payment: 0,
+    LineDiscount: 0,
+    TotalDiscount: 0,
+    IncomeExpAmount: 0,
+    Prepayment: 0,
+    SaleIsReturnSale: false
   };
 
-  // ------------------------
-  // LINE TEMPLATE
-  // ------------------------
-  const lineTemplate =
-    dataJson.Envelope.Body.MobilePosSave
-      .mobileTransactionXML.MobileTransactionLine[0];
+  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileReceiptInfo = [
+    {
+      _attributes: {xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"},Id: ID,Value: body.note || ""}
+  ];
 
-  const lines = [];
+  const subLines = [];
 
   body.products?.forEach((product, index) => {
-
-    // MAIN PRODUCT LINE
-    lines.push({
-      ...lineTemplate,
-
-      Id: ID,
-      StoreId: body.branch_id,
-
-      LineNo: (index + 1) * 1000,
-
-      Number: product.id,
-
-      Quantity: product.quantity,
-
-      ManualPrice:
-        product.quantity > 0
-          ? product.total / product.quantity
-          : product.total,
-
-      NetAmount: product.total,
-
-      TransDate: dateTime,
-
-      LineComment: product.note || "",
-    });
-
-    // ------------------------
-    // MODIFIERS
-    // ------------------------
     product.modifiers?.forEach((modifier, modIndex) => {
-      lines.push({
-        ...lineTemplate,
+      subLines.push({
+        _attributes: {
+          xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"
+        },
 
         Id: ID,
-        StoreId: body.branch_id,
-
-        LineNo: ((index + 1) * 1000) + (modIndex + 1),
-
-        Number: modifier.id,
-
-        Quantity: modifier.quantity,
-
-        ManualPrice:
-          modifier.quantity > 0
-            ? modifier.total / modifier.quantity
-            : modifier.total,
-
-        NetAmount: modifier.total,
-
-        TransDate: dateTime,
-
-        LineComment: modifier.note || "",
-
-        // Optional:
-        // Mark modifier as comment/addon
-        LineType: 0,
+        LineNo: (index + 1) * 1000 + modIndex + 1,
+        ParentLineNo: (index + 1) * 1000,
+        Number: modifier.id || "",
+        Quantity: modifier.quantity || 0,
+        NetAmount: modifier.total || 0,
+        Description: modifier.note || ""
       });
     });
   });
 
-  dataJson.Envelope.Body.MobilePosSave
-    .mobileTransactionXML.MobileTransactionLine = lines;
-
-  // ------------------------
-  // XML OPTIONS
-  // ------------------------
+  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine = subLines;
+  delete dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine;
   const options = {
     compact: true,
     ignoreComment: true,
     spaces: 4,
-    fullTagEmptyElement: true,
+    fullTagEmptyElement: true
   };
 
-  const xml = xml2js.json2xml(dataJson, options);
-
-  return xml;
+  return xml2js.json2xml(dataJson, options);
 };
-
 
 module.exports = {
   getAllItems,
@@ -360,5 +391,6 @@ module.exports = {
   getItems,
   createSalesOrder,
   setOrderStatus,
+  CreateTestOrder,
   login
 };

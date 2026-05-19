@@ -1,154 +1,71 @@
 {
-    "Envelope": {
-        "Body": {
-            "MobilePosSave": {
-                "responseCode": "",
-                "errorText": "",
-                "staffId": "",
-                "menuType": "",
-                "unlockTrans": false,
-                "mobileTransactionXML": {
-                    "MobileTransaction": {
-                        "Id": "",
-                        "StoreId": "",
-                        "TerminalId": "",
-                        "StaffId": "1",
-                        "TransactionType": 2,
-                        "EntryStatus": "",
-                        "ReceiptNo": "",
-                        "TransactionNo": "",
-                        "TransDate": "",
-                        "CurrencyCode": "",
-                        "CurrencyFactor": "",
-                        "GenBusPostingGroup": "RETAIL",
-                        "VATBusPostingGroup": "VAT",
-                        "PriceGroupCode": "",
-                        "CustomerId": "",
-                        "CustDiscGroup": "",
-                        "MemberCardNo": "",
-                        "MemberPriceGroupCode": "",
-                        "ManualTotalDiscPercent": "",
-                        "ManualTotalDiscAmount": "",
-                        "NetAmount": "",
-                        "GrossAmount": "",
-                        "Payment": "",
-                        "LineDiscount": "",
-                        "TotalDiscount": "",
-                        "IncomeExpAmount": "",
-                        "Prepayment": "",
-                        "SaleIsReturnSale": false,
-                        "RefundedReceiptNo": "",
-                        "RefundedFromStoreNo": "",
-                        "RefundedFromPOSTermNo": "",
-                        "RefundedFromTransNo": "",
-                        "TableNo": "",
-                        "NoofCovers": "",
-                        "DiningTblDescription": "",
-                        "MaxSeatingCapacity": "",
-                        "SalesType": "",
-                        "PickupDeliveryTime": "",
-                        "OrderType": "",
-                        "PaymentType": "",
-                        "MemberMobNo": "",
-                        "MemberName": "",
-                        "Address": "",
-                        "Address2": "",
-                        "MemberEmail": "",
-                        "AggregatorOrderID": "",
-                        "DeliverECTTransId" : "",
-                        "Channel": "",
-                        "DeliveryType": "",
-                        "DeliverECTOrder": "",
-                        "Comment": "",
-                        "PointBalance": "",
-                        "PointsUsedInBasket": "",
-                        "AmountRemaining": "",
-                        "BasketInPoints": "",
-                        "IssuedPoints": "",
-                        "ShipToCountryRegionCode": "",
-                        "_attributes": {
-                            "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50790"
-                        }
-                    },
-                    "MobileTransactionLine": [
-                        {
-                            "Id": "",
-                            "StoreId": "",
-                            "TerminalId": "",
-                            "LineNo": "",
-                            "EntryStatus": "",
-                            "LineType": 0,
-                            "Number": "",
-                            "Barcode": "",
-                            "CurrencyCode": "",
-                            "CurrencyFactor": "",
-                            "VariantCode": "",
-                            "UomId": "",
-                            "CouponFunction": "",
-                            "ValidInTransaction": "",
-                            "CouponCode": "",
-                            "NetPrice": "",
-                            "Price": "",
-                            "Quantity": "",
-                            "DiscountAmount": "",
-                            "DiscountPercent": "",
-                            "NetAmount": "",
-                            "TAXAmount": "",
-                            "VatBusPostingGroup": "VAT",
-                            "VatProdPostingGroup": "",
-                            "GenBusPostingGroup": "RETAIL",
-                            "GenProdPostingGroup": "",
-                            "ManualPrice": "",
-                            "CardOrCustNo": "",
-                            "ManualDiscountPercent": "",
-                            "ManualDiscountAmount": "",
-                            "DiscInfoLine": "",
-                            "TotalDiscInfoLine": "",
-                            "ItemDescription": "",
-                            "VariantDescription": "",
-                            "UomDescription": "",
-                            "TenderDescription": "",
-                            "TransDate": "",
-                            "ExternalId": "",
-                            "EFTCardNumber": "",
-                            "EFTCardName": "",
-                            "EFTMessage": "",
-                            "EFTVerificationMethod": "",
-                            "EFTTransactionNo": "",
-                            "EFTAuthStatus": "",
-                            "EFTTransType": "",
-                            "EFTDateTime": "",
-                            "ExternalLineNo": "",
-                            "DealItem": "",
-                            "StaffId": "",
-                            "SalesType": "",
-                            "PriceGroupCode": "",
-                            "RestMenuType": "",
-                            "RestMenuTypeCode": "",
-                            "GuestSeatNo": "",
-                            "KitchenRouting": "",
-                            "LineKitchenStatus": "",
-                            "LineKitchenStatusCode": "",
-                            "RecommendedItem": false,
-                            "OrigTransStore": "",
-                            "OrigTransPos": "",
-                            "OrigTransNo": "",
-                            "OrigTransLineNo": "",
-                            "RetailImageID": "",
-                            "LineComment": "",
-                            "_attributes": {
-                                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50790"
-                            }
-                        }
-                    ]
-                },
-                "_attributes": {
-                    "xmlns": "urn:microsoft-dynamics-schemas/codeunit/EDM_MobilePosSave"
-                }
-            }
-        },
+  "Envelope": {
+    "_attributes": {
+      "xmlns": "http://schemas.xmlsoap.org/soap/envelope/"
+    },
+    "Body": {
+      "MobilePosSave": {
         "_attributes": {
-            "xmlns": "http://schemas.xmlsoap.org/soap/envelope/"
+          "xmlns": "urn:microsoft-dynamics-schemas/codeunit/LSCMobilePosSaveEDM"
+        },
+        "responseCode": "",
+        "errorText": "",
+        "staffId": "",
+        "menuType": "",
+        "unlockTrans": false,
+
+        "mobileTransactionXML": {
+
+          "MobileTransaction": {
+            "_attributes": {
+              "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+            },
+
+            "StoreId": "",
+            "TerminalId": "",
+            "StaffId": "",
+            "ReceiptNo": "",
+            "GrossAmount": "",
+            "NetAmount": "",
+            "EntryStatus": ""
+          },
+
+          "MobileReceiptInfo": [
+            {
+              "_attributes": {
+                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+              },
+
+              "Value": ""
+            }
+          ],
+
+          "MobileTransactionLine": [
+            {
+              "_attributes": {
+                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+              },
+
+              "Number": "",
+              "Quantity": "",
+              "NetAmount": ""
+            }
+          ],
+
+          "MobileTransactionSubLine": [
+            {
+              "_attributes": {
+                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+              },
+
+              "Number": "",
+              "Quantity": "",
+              "NetAmount": "",
+              "Description": ""
+            }
+          ]
         }
+      }
     }
+  }
 }
