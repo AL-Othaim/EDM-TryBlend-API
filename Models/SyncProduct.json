@@ -1,0 +1,15 @@
+{
+    "Envelope": {
+        "Body": {
+            "GenerateItemsJson": {
+                "pLocationId": "",
+                "_attributes": {
+                    "xmlns": "urn:microsoft-dynamics-schemas/codeunit/EDM_DeliverectWS"
+                }
+            }
+        },
+        "_attributes": {
+            "xmlns": "http://schemas.xmlsoap.org/soap/envelope/"
+        }
+    }
+}

@@ -97,11 +97,73 @@ function authMiddleware(req, res, next) {
   next();
 }
 
+function getErrorMessage(error) {
+  return error.response?.data || error.message;
+}
+
+async function getItems(req, res) {
+  try {
+    const result = await getAllItems();
+    res.json(result.parsed);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Could not retrieve items',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+async function createSalesOrder(req, res) {
+  try {
+    const result = await createOrder();
+    res.json(result.parsed);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Could not create order',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+async function setOrderStatus(req, res) {
+  try {
+    const result = await updateOrderStatus();
+    res.json(result.parsed);
+  } catch (error) {
+    res.status(500).json({
+      error: 'Could not update order status',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+function login(req, res) {
+  const { email, password } = req.body || {};
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Missing email or password' });
+  }
+
+  if (
+    email !== process.env.TRYBLEND_EMAIL ||
+    password !== process.env.TRYBLEND_PASSWORD
+  ) {
+    return res.status(401).json({ error: 'Invalid email or password' });
+  }
+
+  const token = generateTryblendToken();
+  return res.json({ access_token: `Bearer ${token}` });
+}
+
 module.exports = {
   getAllItems,
   parseBusinessCentralResponse,
   createOrder,
   updateOrderStatus,
   generateTryblendToken,
-  authMiddleware
+  authMiddleware,
+  getItems,
+  createSalesOrder,
+  setOrderStatus,
+  login
 };
