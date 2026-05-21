@@ -1,102 +1,114 @@
 const axios = require('axios');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { getToken } = require('./auth');
 const OrderJson = require('../Models/Order.json');
 const xml2js = require('xml-js');
 
 const TOKEN_EXPIRES_IN_SECONDS = 24 * 60 * 60;
-
-function base64UrlEncode(value) {
-  return Buffer.from(value)
-    .toString('base64url');
-}
-
-function base64UrlDecode(value) {
-  return Buffer.from(value, 'base64url').toString('utf8');
-}
+const TRYBLEND_TOKEN_USE = 'tryblend_access';
+const AUTH_ERROR_MESSAGE = 'Invalid authorization token';
+const JWT_OPTIONS = {
+  issuer: 'tryblend-api',
+  audience: 'tryblend-client'
+};
+const activeTokenIdsByEmail = new Map();
 
 function getJwtSecret() {
-  return process.env.JWT_SECRET_KEY || process.env.TRYBLEND_PASSWORD;
+  const secret = process.env.JWT_SECRET_KEY;
+
+  if (!secret) {
+    throw new Error('Missing JWT_SECRET_KEY in .env');
+  }
+
+  return secret;
+}
+
+function generateGuid() {
+  return crypto.randomUUID();
 }
 
 function createJwt(payload) {
-  const secret = getJwtSecret();
-
-  if (!secret) {
-    throw new Error('Missing JWT_SECRET_KEY in .env');
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  const header = {
-    alg: 'HS256',
-    typ: 'JWT'
-  };
-  const body = {
-    ...payload,
-    iat: now,
-    exp: now + TOKEN_EXPIRES_IN_SECONDS
-  };
-
-  const encodedHeader = base64UrlEncode(JSON.stringify(header));
-  const encodedBody = base64UrlEncode(JSON.stringify(body));
-  const unsignedToken = `${encodedHeader}.${encodedBody}`;
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(unsignedToken)
-    .digest('base64url');
-
-  return `${unsignedToken}.${signature}`;
+  return jwt.sign(payload, getJwtSecret(), {
+    expiresIn: TOKEN_EXPIRES_IN_SECONDS,
+    ...JWT_OPTIONS
+  });
 }
 
 function verifyJwt(token) {
-  const secret = getJwtSecret();
+  const payload = jwt.verify(token, getJwtSecret(), JWT_OPTIONS);
 
-  if (!secret) {
-    throw new Error('Missing JWT_SECRET_KEY in .env');
-  }
-
-  const [encodedHeader, encodedBody, signature] = token.split('.');
-
-  if (!encodedHeader || !encodedBody || !signature) {
-    throw new Error('Invalid token');
-  }
-
-  const unsignedToken = `${encodedHeader}.${encodedBody}`;
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(unsignedToken)
-    .digest('base64url');
-  const actualSignature = Buffer.from(signature);
-  const validSignature = Buffer.from(expectedSignature);
-
-  if (
-    actualSignature.length !== validSignature.length ||
-    !crypto.timingSafeEqual(actualSignature, validSignature)
-  ) {
-    throw new Error('Invalid token');
-  }
-
-  const payload = JSON.parse(base64UrlDecode(encodedBody));
-
-  if (payload.exp && Math.floor(Date.now() / 1000) >= payload.exp) {
-    throw new Error('Token expired');
+  if (!isActiveTryblendToken(payload)) {
+    throw new Error(AUTH_ERROR_MESSAGE);
   }
 
   return payload;
 }
 
-function generateGUID() {
-  return crypto.randomUUID();
+function isActiveTryblendToken(payload) {
+  return (
+    payload.token_use === TRYBLEND_TOKEN_USE &&
+    Boolean(payload.email) &&
+    Boolean(payload.jti) &&
+    activeTokenIdsByEmail.get(payload.email) === payload.jti
+  );
 }
 
+function generateTryblendToken(email) {
+  const tokenId = generateGuid();
 
+  const token = createJwt({
+    sub: email,
+    email,
+    jti: tokenId,
+    token_use: TRYBLEND_TOKEN_USE
+  });
 
+  activeTokenIdsByEmail.set(email, tokenId);
+
+  return token;
+}
+
+function getAuthorizationToken(req) {
+  const authorization = req.headers.authorization || '';
+  const [scheme, bearerToken] = authorization.split(' ');
+
+  return scheme === 'Bearer' ? bearerToken : authorization;
+}
+
+function authMiddleware(req, res, next) {
+  try {
+    const token = getAuthorizationToken(req);
+
+    if (!token) {
+      return res.status(401).json({
+        error: 'Missing authorization token'
+      });
+    }
+
+    req.user = verifyJwt(token);
+
+    next();
+  } catch (error) {
+    return res.status(403).json({
+      error: AUTH_ERROR_MESSAGE
+    });
+  }
+}
+
+function getErrorMessage(error) {
+  if (error.response?.data) {
+    return error.response.data;
+  }
+
+  return error.message;
+}
 
 function parseBusinessCentralResponse(data) {
   if (data && typeof data.value === 'string') {
     try {
       return JSON.parse(data.value);
-    } catch (e) {
+    } catch {
       return data.value;
     }
   }
@@ -104,232 +116,85 @@ function parseBusinessCentralResponse(data) {
   return data;
 }
 
+async function makeBusinessCentralRequest(url, body = null, extraHeaders = {}) {
+  if (!url) {
+    throw new Error('Missing Business Central URL');
+  }
+
+  const token = await getToken();
+
+  const { data } = await axios.post(url, body, {
+    timeout: 15000,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      ...extraHeaders
+    }
+  });
+
+  return {
+    raw: data,
+    parsed: parseBusinessCentralResponse(data)
+  };
+}
+
 async function getAllItems() {
-  const url = process.env.BUSINESS_CENTRAL_GET_ITEMS_URL;
-
-  if (!url) {
-    throw new Error('Missing BUSINESS_CENTRAL_GET_ITEMS_URL in .env');
-  }
-
-  const token = await getToken();
-  const { data } = await axios.post(url, null, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json'
-    }
-  });
-
-  return {
-    raw: data,
-    parsed: parseBusinessCentralResponse(data)
-  };
+  return makeBusinessCentralRequest(
+    process.env.BUSINESS_CENTRAL_GET_ITEMS_URL
+  );
 }
+
 async function createOrder() {
-  const url = process.env.BUSINESS_CENTRAL_CREATE_ORDER_URL;
-
-  if (!url) {
-    throw new Error('Missing BUSINESS_CENTRAL_CREATE_ORDER_URL in .env');
-  }
-
-  const token = await getToken();
-  const { data } = await axios.post(url, null, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json'
-    }
-  });
-
-  return {
-    raw: data,
-    parsed: parseBusinessCentralResponse(data)
-  };
+  return makeBusinessCentralRequest(
+    process.env.BUSINESS_CENTRAL_CREATE_ORDER_URL
+  );
 }
+
 async function updateOrderStatus() {
-  const url = process.env.BUSINESS_CENTRAL_UPDATE_ORDER_STATUS_URL;
-
-  if (!url) {
-    throw new Error('Missing BUSINESS_CENTRAL_UPDATE_ORDER_STATUS_URL in .env');
-  }
-
-  const token = await getToken();
-  const { data } = await axios.post(url, null, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json'
-    }
-  });
-
-  return {
-    raw: data,
-    parsed: parseBusinessCentralResponse(data)
-  };
-}
-function generateTryblendToken(email) {
-  return createJwt({
-    sub: email,
-    email
-  });
+  return makeBusinessCentralRequest(
+    process.env.BUSINESS_CENTRAL_UPDATE_ORDER_STATUS_URL
+  );
 }
 
-function authMiddleware(req, res, next) {
-  const authorization = req.headers.authorization || '';
-  const [scheme, token] = authorization.split(' ');
-
-  if (scheme !== 'Bearer' || !token) {
-    return res.status(401).json({ error: 'Missing bearer token' });
+function sanitizeXmlValue(value) {
+  if (value === null || value === undefined) {
+    return '';
   }
 
-  try {
-    req.user = verifyJwt(token);
-  } catch (error) {
-    return res.status(403).json({ error: error.message });
-  }
-
-  next();
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
-function getErrorMessage(error) {
-  return error.response?.data || error.message;
-}
+function convertJsonOrderToXml(body) {
+  const dataJson = structuredClone(OrderJson);
 
-async function getItems(req, res) {
-  try {
-    const result = await getAllItems();
-    res.json(result.parsed);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Could not retrieve items',
-      message: getErrorMessage(error)
-    });
-  }
-}
-
-async function createSalesOrder(req, res) {
-  try {
-    const result = await createOrder();
-    res.json(result.parsed);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Could not create order',
-      message: getErrorMessage(error)
-    });
-  }
-}
-
-async function setOrderStatus(req, res) {
-  try {
-    const result = await updateOrderStatus();
-    res.json(result.parsed);
-  } catch (error) {
-    res.status(500).json({
-      error: 'Could not update order status',
-      message: getErrorMessage(error)
-    });
-  }
-}
-
-function login(req, res) {
-  const { email, password } = req.body || {};
-
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Missing email or password' });
-  }
-
-  if (
-    email !== process.env.TRYBLEND_EMAIL ||
-    password !== process.env.TRYBLEND_PASSWORD
-  ) {
-    return res.status(401).json({ error: 'Invalid email or password' });
-  }
-
-  let token;
-
-  try {
-    token = generateTryblendToken(email);
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
-  }
-
-  return res.json({ access_token: `Bearer ${token}` });
-}
-
-const CreateTestOrder = async (req, res) => {
-  try {
-    const body = req.body
-    const url = process.env.BUSINESS_CENTRAL_CREATE_TEXT_ORDER_URL;
-
-    if (!url) {
-      return res.status(400).json({ status: 'error', error: 'Missing url' });
-    }
-
-    // console.log('ALOthaim', body)
-    const XmlText = ConvertJsonOrderToXml(body)
-
-    // console.log('Request XML AlOthaim: ', XmlText)
-
-    const token = await getToken()
-
-    const { data } = await axios.post(url, XmlText, {
-      headers: {
-        SOAPAction: 'urn:microsoft-dynamics-schemas/codeunit/EDM_MobilePosSave',
-        'Content-Type': 'application/xml',
-        Authorization: `Bearer ${token}`
-      }
-    })
-
-    const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true }; // Optional settings
-    const responseJson = JSON.parse(xml2js.xml2json(data, options));
-
-    const result =
-      responseJson['Soap:Envelope']?.['Soap:Body']?.['MobilePosSave_Result']
-
-    const responseCode = result?.responseCode?.['_text']
-    const errorText = result?.errorText?.['_text'];
-
-    if (responseCode != '0000' && errorText)
-      return res.status(400).json({ status: "error", error: errorText });
-
-
-    // console.log('Response XML PBCO: ', data)
-    res.set('Content-Type', 'application/xml');
-    return res.send(data);
-  } catch (error) {
-    // console.log('PBCO', error)
-    if (error?.response?.data) {
-      const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true }; // Optional settings
-      const responseJson = JSON.parse(xml2js.xml2json(error.response.data, options));
-      const errorText = responseJson['s:Envelope']?.['s:Body']?.['s:Fault']?.['detail']?.['string']?.['_text'] || error.response.data
-      return res.status(400).json({ status: "error", error: errorText })
-    }
-    return res.status(error.status || 500).json({ status: "error", error: error.message })
-  }
-
-}
-const ConvertJsonOrderToXml = (body) => {
-  const dataJson = JSON.parse(JSON.stringify(OrderJson));
-
-  const ID = generateGUID();
+  const id = generateGuid();
   const dateTime = new Date().toISOString();
+
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction = {
     _attributes: {
-      xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"
+      xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
     },
 
-    Id: ID,
-    StoreId: body.branch_id,
-    TerminalId: "DCT01",
-    StaffId: "1",
+    Id: id,
+    StoreId: sanitizeXmlValue(body.branch_id),
+    TerminalId: 'DCT01',
+    StaffId: '1',
     TransDate: dateTime,
 
-    CurrencyCode: body.currency || "",
+    CurrencyCode: sanitizeXmlValue(body.currency || ''),
     CurrencyFactor: 1,
-    GenBusPostingGroup: "",
-    VATBusPostingGroup: "",
-    PriceGroupCode: "",
-    CustomerId: "",
-    CustDiscGroup: "",
-    MemberCardNo: "",
-    MemberPriceGroupCode: "",
+    GenBusPostingGroup: '',
+    VATBusPostingGroup: '',
+    PriceGroupCode: '',
+    CustomerId: '',
+    CustDiscGroup: '',
+    MemberCardNo: '',
+    MemberPriceGroupCode: '',
     ManualTotalDiscPercent: 0,
     ManualTotalDiscAmount: 0,
     SourceType: 0,
@@ -345,7 +210,12 @@ const ConvertJsonOrderToXml = (body) => {
 
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileReceiptInfo = [
     {
-      _attributes: {xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"},Id: ID,Value: body.note || ""}
+      _attributes: {
+        xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
+      },
+      Id: id,
+      Value: sanitizeXmlValue(body.note || '')
+    }
   ];
 
   const subLines = [];
@@ -354,31 +224,184 @@ const ConvertJsonOrderToXml = (body) => {
     product.modifiers?.forEach((modifier, modIndex) => {
       subLines.push({
         _attributes: {
-          xmlns: "urn:microsoft-dynamics-nav/xmlports/x50300"
+          xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
         },
 
-        Id: ID,
+        Id: id,
         LineNo: (index + 1) * 1000 + modIndex + 1,
         ParentLineNo: (index + 1) * 1000,
-        Number: modifier.id || "",
+        Number: sanitizeXmlValue(modifier.id || ''),
         Quantity: modifier.quantity || 0,
         NetAmount: modifier.total || 0,
-        Description: modifier.note || ""
+        Description: sanitizeXmlValue(modifier.note || '')
       });
     });
   });
 
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine = subLines;
+
   delete dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine;
-  const options = {
+
+  return xml2js.json2xml(dataJson, {
     compact: true,
     ignoreComment: true,
     spaces: 4,
     fullTagEmptyElement: true
-  };
+  });
+}
 
-  return xml2js.json2xml(dataJson, options);
-};
+async function createTestOrder(req, res) {
+  try {
+    const body = req.body;
+
+    const url = process.env.BUSINESS_CENTRAL_CREATE_TEST_ORDER_URL;
+
+    if (!url) {
+      return res.status(400).json({
+        status: 'error',
+        error: 'Missing URL'
+      });
+    }
+
+    const xmlText = convertJsonOrderToXml(body);
+
+    const result = await makeBusinessCentralRequest(
+      url,
+      xmlText,
+      {
+        SOAPAction: 'urn:microsoft-dynamics-schemas/codeunit/EDM_MobilePosSave',
+        'Content-Type': 'application/xml'
+      }
+    );
+
+    const responseJson = JSON.parse(
+      xml2js.xml2json(result.raw, {
+        compact: true,
+        ignoreComment: true,
+        spaces: 4,
+        fullTagEmptyElement: true
+      })
+    );
+
+    const soapResult =
+      responseJson['Soap:Envelope']?.['Soap:Body']?.['MobilePosSave_Result'];
+
+    const responseCode = soapResult?.responseCode?._text;
+    const errorText = soapResult?.errorText?._text;
+
+    if (responseCode !== '0000' && errorText) {
+      return res.status(400).json({
+        status: 'error',
+        error: errorText
+      });
+    }
+
+    res.set('Content-Type', 'application/xml');
+
+    return res.send(result.raw);
+  } catch (error) {
+    if (error?.response?.data) {
+      try {
+        const responseJson = JSON.parse(
+          xml2js.xml2json(error.response.data, {
+            compact: true,
+            ignoreComment: true,
+            spaces: 4,
+            fullTagEmptyElement: true
+          })
+        );
+
+        const errorText =
+          responseJson['s:Envelope']?.['s:Body']?.['s:Fault']?.['detail']?.['string']?._text;
+
+        return res.status(400).json({
+          status: 'error',
+          error: errorText || 'Business Central SOAP Error'
+        });
+      } catch {
+        return res.status(400).json({
+          status: 'error',
+          error: error.response.data
+        });
+      }
+    }
+
+    return res.status(500).json({
+      status: 'error',
+      error: error.message
+    });
+  }
+}
+
+async function getItems(req, res) {
+  try {
+    const result = await getAllItems();
+
+    return res.json(result.parsed);
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Could not retrieve items',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+async function createSalesOrder(req, res) {
+  try {
+    const result = await createOrder();
+
+    return res.json(result.parsed);
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Could not create order',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+async function setOrderStatus(req, res) {
+  try {
+    const result = await updateOrderStatus();
+
+    return res.json(result.parsed);
+  } catch (error) {
+    return res.status(500).json({
+      error: 'Could not update order status',
+      message: getErrorMessage(error)
+    });
+  }
+}
+
+function isTryblendLoginValid(email, password) {
+  return (
+    email === process.env.TRYBLEND_EMAIL &&
+    password === process.env.TRYBLEND_PASSWORD
+  );
+}
+
+function login(req, res) {
+  const { email, password } = req.body || {};
+
+  if (!email || !password) {
+    return res.status(400).json({
+      error: 'Missing email or password'
+    });
+  }
+
+  if (!isTryblendLoginValid(email, password)) {
+    return res.status(401).json({
+      error: 'Invalid email or password'
+    });
+  }
+
+  const token = generateTryblendToken(email);
+
+  return res.json({
+    access_token: token,
+    token_type: 'Bearer',
+    expires_in: TOKEN_EXPIRES_IN_SECONDS
+  });
+}
 
 module.exports = {
   getAllItems,
@@ -390,6 +413,6 @@ module.exports = {
   getItems,
   createSalesOrder,
   setOrderStatus,
-  CreateTestOrder,
+  createTestOrder,
   login
 };

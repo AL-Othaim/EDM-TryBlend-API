@@ -5,7 +5,7 @@ const {
   authMiddleware,
   getItems,
   createSalesOrder,
-  CreateTestOrder,
+  createTestOrder,
   setOrderStatus,
   login
 } = require('../Controller/AlOthaim');
@@ -13,7 +13,7 @@ const {
 router.post('/items', authMiddleware, getItems);
 router.get('/items', authMiddleware, getItems);
 router.post('/create-order', authMiddleware, createSalesOrder);
-router.post('/create-order-test', CreateTestOrder);
+router.post('/create-order-test', createTestOrder);
 router.post('/order-status', authMiddleware, setOrderStatus);
 router.post('/login', login);
 
