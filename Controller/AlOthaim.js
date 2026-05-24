@@ -144,11 +144,11 @@ async function getAllItems() {
   );
 }
 
-async function createOrder() {
+/* async function createOrder() {
   return makeBusinessCentralRequest(
     process.env.BUSINESS_CENTRAL_CREATE_ORDER_URL
   );
-}
+} */
 
 async function updateOrderStatus() {
   return makeBusinessCentralRequest(
@@ -181,7 +181,8 @@ function convertJsonOrderToXml(body) {
     },
 
     Id: id,
-    StoreId: sanitizeXmlValue(body.branch_id),
+    //StoreId: sanitizeXmlValue(body.branch_id),
+    StoreId: 'DC001',
     TerminalId: 'DCT01',
     StaffId: '1',
     TransDate: dateTime,
@@ -250,7 +251,7 @@ function convertJsonOrderToXml(body) {
   });
 }
 
-async function createTestOrder(req, res) {
+async function createSalesOrder(req, res) {
   try {
     const body = req.body;
 
@@ -262,9 +263,9 @@ async function createTestOrder(req, res) {
         error: 'Missing URL'
       });
     }
-
+    console.log(body);
     const xmlText = convertJsonOrderToXml(body);
-
+    console.log(xmlText);
     const result = await makeBusinessCentralRequest(
       url,
       xmlText,
@@ -346,7 +347,7 @@ async function getItems(req, res) {
   }
 }
 
-async function createSalesOrder(req, res) {
+/* async function createSalesOrder(req, res) {
   try {
     const result = await createOrder();
 
@@ -357,7 +358,7 @@ async function createSalesOrder(req, res) {
       message: getErrorMessage(error)
     });
   }
-}
+} */
 
 async function setOrderStatus(req, res) {
   try {
@@ -406,13 +407,13 @@ function login(req, res) {
 module.exports = {
   getAllItems,
   parseBusinessCentralResponse,
-  createOrder,
+  // createOrder,
   updateOrderStatus,
   generateTryblendToken,
   authMiddleware,
   getItems,
-  createSalesOrder,
+  // createSalesOrder,
   setOrderStatus,
-  createTestOrder,
+  createSalesOrder,
   login
 };
