@@ -5,7 +5,7 @@ const { getToken } = require('./auth');
 const OrderJson = require('../Models/Order.json');
 const xml2js = require('xml-js');
 
-const TOKEN_EXPIRES_IN_SECONDS = 24 * 60 * 60;
+const TOKEN_EXPIRES_IN_SECONDS = 10 * 60;
 const TRYBLEND_TOKEN_USE = 'tryblend_access';
 const AUTH_ERROR_MESSAGE = 'Invalid authorization token';
 const JWT_OPTIONS = {
