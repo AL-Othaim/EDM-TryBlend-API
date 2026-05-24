@@ -263,9 +263,7 @@ async function createSalesOrder(req, res) {
         error: 'Missing URL'
       });
     }
-    console.log(body);
     const xmlText = convertJsonOrderToXml(body);
-    console.log(xmlText);
     const result = await makeBusinessCentralRequest(
       url,
       xmlText,

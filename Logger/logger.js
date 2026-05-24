@@ -3,44 +3,63 @@ const path = require('path');
 const crypto = require('crypto');
 
 const LOG_DIR = process.env.LOG_DIR || 'C:\\inetpub\\wwwroot\\Webhooks\\EDM-Othaim-Webhook\\logs';
+const PAYLOAD_DIR = path.join(LOG_DIR, 'payloads');
 
-function ensureLogDir() {
-  if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
+function ensureDir(dir) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
   }
 }
 
 function getLogFileName() {
-  const now = new Date();
-  const date = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   return path.join(LOG_DIR, `${date}.log.json`);
 }
 
 function writeLog(entry) {
   try {
-    ensureLogDir();
-
-    const filePath = getLogFileName();
+    ensureDir(LOG_DIR);
     const line = JSON.stringify(entry) + '\n';
-
-    fs.appendFileSync(filePath, line, 'utf8');
+    fs.appendFileSync(getLogFileName(), line, 'utf8');
   } catch (err) {
     console.error('[Logger] Failed to write log:', err.message);
   }
 }
 
 /**
- * Express middleware that logs every request and its response body.
- * Usage: app.use(requestLogger) or router.use(requestLogger)
+ * Writes the raw incoming JSON body to its own file under logs/payloads/
+ * Filename: payloads/YYYY-MM-DD_HH-MM-SS_<requestId>.json
+ */
+function writePayload(requestId, timestamp, body) {
+  try {
+    if (!body || Object.keys(body).length === 0) return;
+
+    ensureDir(PAYLOAD_DIR);
+
+    const safeTimestamp = timestamp.replace(/:/g, '-').replace(/\..+/, '');
+    const fileName = `${safeTimestamp}_${requestId}.json`;
+    const filePath = path.join(PAYLOAD_DIR, fileName);
+
+    fs.writeFileSync(filePath, JSON.stringify(body, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[Logger] Failed to write payload file:', err.message);
+  }
+}
+
+/**
+ * Express middleware that logs every request and its response.
+ * Also writes a dedicated pretty-printed JSON file for each incoming payload.
  */
 function requestLogger(req, res, next) {
   const requestId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
 
-  // Capture the raw response body by monkey-patching res.json and res.send
+  // Write incoming payload immediately (don't wait for response)
+  writePayload(requestId, startedAt, req.body);
+
+  // Capture response body
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
-
   let responseBody = null;
 
   res.json = function (body) {
@@ -49,7 +68,6 @@ function requestLogger(req, res, next) {
   };
 
   res.send = function (body) {
-    // Only capture if it's a string (e.g. XML responses)
     if (typeof body === 'string') {
       responseBody = body;
     }
@@ -80,7 +98,7 @@ function requestLogger(req, res, next) {
 }
 
 /**
- * Remove sensitive headers like Authorization before logging.
+ * Redact sensitive headers before logging.
  */
 function sanitizeHeaders(headers) {
   const safe = { ...headers };
