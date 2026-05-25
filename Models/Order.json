@@ -34,6 +34,7 @@
                             "NetAmount": "",
                             "VatBusPostingGroup": "VAT",
                             "GenBusPostingGroup": "RETAIL",
+                            "ManualPrice": "",
                             "TransDate": "",
                             "RecommendedItem": false,
                             "_attributes": {
