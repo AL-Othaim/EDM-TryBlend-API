@@ -170,11 +170,12 @@ function sanitizeXmlValue(value) {
 }
 
 const ConvertJsonOrderToXml = (body) => {
-  const dataJson = OrderJson
-  const ID = generateGuid()
+  // Deep clone to avoid mutating the imported JSON module across requests
+  const dataJson = JSON.parse(JSON.stringify(OrderJson));
+  const ID = generateGuid();
   const dateTime = new Date().toISOString();
 
-  const header = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction
+  const header = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction;
 
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction = {
     ...header,
@@ -185,9 +186,10 @@ const ConvertJsonOrderToXml = (body) => {
     TransDate: dateTime,
     NetAmount: body.subtotal || 0,
     GrossAmount: body.total || 0,
-  }
+  };
 
-  const Line = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine[0]
+  const Line = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine[0];
+  const SubLine = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine[0];
 
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine =
     body.products?.map((product, index) => ({
@@ -203,12 +205,31 @@ const ConvertJsonOrderToXml = (body) => {
       GenBusPostingGroup: 'RETAIL',
       TransDate: dateTime,
       RecommendedItem: false,
-    }))
+      // Ensure the xmlport namespace is always explicit on each element
+      _attributes: { xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300' },
+    })) ?? [];
 
-  const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true }; // Optional settings
-  const xml = xml2js.json2xml(dataJson, options);
-  return xml
-}
+  // Fix 1: iterate products, then their modifiers — not body.products.modifiers
+  // Fix 2: use `productIndex` to compute ParentLineNo correctly (was using undefined `i`)
+  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine =
+    body.products?.flatMap((product, productIndex) =>
+      (product.modifiers ?? []).map((modifier, modifierIndex) => ({
+        ...SubLine,
+        Id: ID,
+        LineNo: (productIndex + 1) * 1000 + (modifierIndex + 1),
+        ParentLineNo: (productIndex + 1) * 1000,
+        Quantity: modifier.quantity,
+        Number: sanitizeXmlValue(modifier.id || ''),
+        Price: modifier.total,
+        ModifierSubCode: modifier.id,
+        // Ensure the xmlport namespace is always explicit on each element
+        _attributes: { xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300' },
+      }))
+    ) ?? [];
+
+  const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
+  return xml2js.json2xml(dataJson, options);
+};
 
 const createSalesOrder = async (req, res) => {
   try {
