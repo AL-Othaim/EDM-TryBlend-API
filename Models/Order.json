@@ -1,71 +1,54 @@
 {
-  "Envelope": {
-    "_attributes": {
-      "xmlns": "http://schemas.xmlsoap.org/soap/envelope/"
-    },
-    "Body": {
-      "MobilePosSave": {
-        "_attributes": {
-          "xmlns": "urn:microsoft-dynamics-schemas/codeunit/LSCMobilePosSaveEDM"
+    "Envelope": {
+        "Body": {
+            "MobilePosSave": {
+                "responseCode": "",
+                "errorText": "",
+                "staffId": "",
+                "menuType": "",
+                "unlockTrans": false,
+                "mobileTransactionXML": {
+                    "MobileTransaction": {
+                        "Id": "",
+                        "StoreId": "",
+                        "TerminalId": "",
+                        "StaffId": "1",
+                        "TransactionType": 2,
+                        "TransDate": "",
+                        "GenBusPostingGroup": "RETAIL",
+                        "VATBusPostingGroup": "VAT",
+                        "NetAmount": "",
+                        "GrossAmount": "",
+                        "_attributes": {
+                            "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+                        }
+                    },
+                    "MobileTransactionLine": [
+                        {
+                            "Id": "",
+                            "StoreId": "",
+                            "LineNo": "",
+                            "LineType": 0,
+                            "Number": "",
+                            "Quantity": "",
+                            "NetAmount": "",
+                            "VatBusPostingGroup": "VAT",
+                            "GenBusPostingGroup": "RETAIL",
+                            "TransDate": "",
+                            "RecommendedItem": false,
+                            "_attributes": {
+                                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
+                            }
+                        }
+                    ]
+                },
+                "_attributes": {
+                    "xmlns": "urn:microsoft-dynamics-schemas/codeunit/LSCMobilePosSaveEDM"
+                }
+            }
         },
-        "responseCode": "",
-        "errorText": "",
-        "staffId": "",
-        "menuType": "",
-        "unlockTrans": false,
-
-        "mobileTransactionXML": {
-
-          "MobileTransaction": {
-            "_attributes": {
-              "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
-            },
-
-            "StoreId": "",
-            "TerminalId": "",
-            "StaffId": "",
-            "ReceiptNo": "",
-            "GrossAmount": "",
-            "NetAmount": "",
-            "EntryStatus": ""
-          },
-
-          "MobileReceiptInfo": [
-            {
-              "_attributes": {
-                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
-              },
-
-              "Value": ""
-            }
-          ],
-
-          "MobileTransactionLine": [
-            {
-              "_attributes": {
-                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
-              },
-
-              "Number": "",
-              "Quantity": "",
-              "NetAmount": ""
-            }
-          ],
-
-          "MobileTransactionSubLine": [
-            {
-              "_attributes": {
-                "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
-              },
-
-              "Number": "",
-              "Quantity": "",
-              "NetAmount": "",
-              "Description": ""
-            }
-          ]
+        "_attributes": {
+            "xmlns": "http://schemas.xmlsoap.org/soap/envelope/"
         }
-      }
     }
-  }
 }

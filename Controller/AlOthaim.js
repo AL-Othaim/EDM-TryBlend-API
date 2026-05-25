@@ -169,91 +169,51 @@ function sanitizeXmlValue(value) {
     .replace(/'/g, '&apos;');
 }
 
-function convertJsonOrderToXml(body) {
-  const dataJson = structuredClone(OrderJson);
-
-  const id = generateGuid();
+const ConvertJsonOrderToXml = (body) => {
+  const dataJson = OrderJson
+  const ID = generateGuid()
   const dateTime = new Date().toISOString();
 
-  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction = {
-    _attributes: {
-      xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
-    },
+  const header = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction
 
-    Id: id,
-    //StoreId: sanitizeXmlValue(body.branch_id),
+  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransaction = {
+    ...header,
+    Id: ID,
     StoreId: 'DC001',
     TerminalId: 'DCT01',
     StaffId: '1',
     TransDate: dateTime,
-
-    CurrencyCode: sanitizeXmlValue(body.currency || ''),
-    CurrencyFactor: 1,
-    GenBusPostingGroup: '',
-    VATBusPostingGroup: '',
-    PriceGroupCode: '',
-    CustomerId: '',
-    CustDiscGroup: '',
-    MemberCardNo: '',
-    MemberPriceGroupCode: '',
-    ManualTotalDiscPercent: 0,
-    ManualTotalDiscAmount: 0,
-    SourceType: 0,
     NetAmount: body.subtotal || 0,
     GrossAmount: body.total || 0,
-    Payment: 0,
-    LineDiscount: 0,
-    TotalDiscount: 0,
-    IncomeExpAmount: 0,
-    Prepayment: 0,
-    SaleIsReturnSale: false
-  };
+  }
 
-  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileReceiptInfo = [
-    {
-      _attributes: {
-        xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
-      },
-      Id: id,
-      Value: sanitizeXmlValue(body.note || '')
-    }
-  ];
+  const Line = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine[0]
 
-  const subLines = [];
+  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine =
+    body.products?.map((product, index) => ({
+      ...Line,
+      Id: ID,
+      StoreId: 'DC001',
+      LineNo: (index + 1) * 1000,
+      LineType: 0,
+      Number: sanitizeXmlValue(product.id || ''),
+      Quantity: product.quantity || 0,
+      NetAmount: product.total || 0,
+      VatBusPostingGroup: 'VAT',
+      GenBusPostingGroup: 'RETAIL',
+      TransDate: dateTime,
+      RecommendedItem: false,
+    }))
 
-  body.products?.forEach((product, index) => {
-    product.modifiers?.forEach((modifier, modIndex) => {
-      subLines.push({
-        _attributes: {
-          xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300'
-        },
-
-        Id: id,
-        LineNo: (index + 1) * 1000 + modIndex + 1,
-        ParentLineNo: (index + 1) * 1000,
-        Number: sanitizeXmlValue(modifier.id || ''),
-        Quantity: modifier.quantity || 0,
-        NetAmount: modifier.total || 0,
-        Description: sanitizeXmlValue(modifier.note || '')
-      });
-    });
-  });
-
-  dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine = subLines;
-
-  delete dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine;
-
-  return xml2js.json2xml(dataJson, {
-    compact: true,
-    ignoreComment: true,
-    spaces: 4,
-    fullTagEmptyElement: true
-  });
+  const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true }; // Optional settings
+  const xml = xml2js.json2xml(dataJson, options);
+  return xml
 }
 
-async function createSalesOrder(req, res) {
+const createSalesOrder = async (req, res) => {
   try {
     const body = req.body;
+    console.log('Al Othaim', body);
 
     const url = process.env.BUSINESS_CENTRAL_CREATE_TEST_ORDER_URL;
 
@@ -263,7 +223,10 @@ async function createSalesOrder(req, res) {
         error: 'Missing URL'
       });
     }
-    const xmlText = convertJsonOrderToXml(body);
+    console.log('AL Othaim', body)
+    const xmlText = ConvertJsonOrderToXml(body);
+    console.log('Request XML Al Othaim: ', xmlText);
+
     const result = await makeBusinessCentralRequest(
       url,
       xmlText,
@@ -273,64 +236,33 @@ async function createSalesOrder(req, res) {
       }
     );
 
-    const responseJson = JSON.parse(
-      xml2js.xml2json(result.raw, {
-        compact: true,
-        ignoreComment: true,
-        spaces: 4,
-        fullTagEmptyElement: true
-      })
-    );
+    const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
+    const responseJson = JSON.parse(xml2js.xml2json(result.raw, options));
 
     const soapResult =
       responseJson['Soap:Envelope']?.['Soap:Body']?.['MobilePosSave_Result'];
 
-    const responseCode = soapResult?.responseCode?._text;
-    const errorText = soapResult?.errorText?._text;
+    const responseCode = soapResult?.responseCode?.['_text'];
+    const errorText = soapResult?.errorText?.['_text'];
 
-    if (responseCode !== '0000' && errorText) {
-      return res.status(400).json({
-        status: 'error',
-        error: errorText
-      });
-    }
+    if (responseCode !== '0000' && errorText)
+      return res.status(400).json({ status: 'error', error: errorText });
 
+    console.log('Response XML Al Othaim: ', result.raw);
     res.set('Content-Type', 'application/xml');
-
     return res.send(result.raw);
   } catch (error) {
+    console.log('Al Othaim', error);
     if (error?.response?.data) {
-      try {
-        const responseJson = JSON.parse(
-          xml2js.xml2json(error.response.data, {
-            compact: true,
-            ignoreComment: true,
-            spaces: 4,
-            fullTagEmptyElement: true
-          })
-        );
-
-        const errorText =
-          responseJson['s:Envelope']?.['s:Body']?.['s:Fault']?.['detail']?.['string']?._text;
-
-        return res.status(400).json({
-          status: 'error',
-          error: errorText || 'Business Central SOAP Error'
-        });
-      } catch {
-        return res.status(400).json({
-          status: 'error',
-          error: error.response.data
-        });
-      }
+      const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
+      const responseJson = JSON.parse(xml2js.xml2json(error.response.data, options));
+      const errorText = responseJson['s:Envelope']?.['s:Body']?.['s:Fault']?.['detail']?.['string']?.['_text'] || error.response.data;
+      return res.status(400).json({ status: 'error', error: errorText });
     }
-
-    return res.status(500).json({
-      status: 'error',
-      error: error.message
-    });
+    return res.status(error.status || 500).json({ status: 'error', error: error.message });
   }
-}
+};
+
 
 async function getItems(req, res) {
   try {
