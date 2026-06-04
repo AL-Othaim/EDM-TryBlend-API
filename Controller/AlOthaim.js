@@ -185,8 +185,10 @@ const ConvertJsonOrderToXml = (body) => {
     StaffId: '1',
     TransDate: dateTime,
     SalesType: 'TAKEAWAY',
-    NetAmount: body.subtotal || 0,
-    GrossAmount: body.total || 0,
+    // NetAmount: body.subtotal || 0,
+    // GrossAmount: body.total || 0,
+    NetAmount: 10,
+    GrossAmount: 10,
   };
 
   const Line = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine[0];
@@ -200,8 +202,10 @@ const ConvertJsonOrderToXml = (body) => {
       LineNo: (index + 1) * 1000,
       LineType: 0,
       Number: sanitizeXmlValue(product.id || ''),
-      Quantity: product.quantity || 0,
-      NetAmount: product.total || 0,
+      // Quantity: product.quantity || 0,
+      // NetAmount: product.total || 0,
+      Quantity: 10,
+      NetAmount: 10,
       VatBusPostingGroup: 'VAT',
       GenBusPostingGroup: 'RETAIL',
       TransDate: dateTime,
