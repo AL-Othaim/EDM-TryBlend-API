@@ -36,6 +36,7 @@
               "GenBusPostingGroup": "RETAIL",
               "ManualPrice": "",
               "TransDate": "",
+              "SalesType": "",
               "RecommendedItem": false,
               "_attributes": {
                 "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"

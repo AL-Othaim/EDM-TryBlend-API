@@ -184,6 +184,7 @@ const ConvertJsonOrderToXml = (body) => {
     TerminalId: 'DCT01',
     StaffId: '1',
     TransDate: dateTime,
+    SalesType: 'TAKEAWAY',
     NetAmount: body.subtotal || 0,
     GrossAmount: body.total || 0,
   };
