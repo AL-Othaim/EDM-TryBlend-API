@@ -189,6 +189,7 @@ const ConvertJsonOrderToXml = (body) => {
     // GrossAmount: body.total || 0,
     NetAmount: 10,
     GrossAmount: 10,
+    AggregatorOrderID: body.aggregator_order_id,
   };
 
   const Line = dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionLine[0];

@@ -19,6 +19,7 @@
             "VATBusPostingGroup": "VAT",
             "NetAmount": "",
             "GrossAmount": "",
+            "AggregatorOrderID": "",
             "_attributes": {
               "xmlns": "urn:microsoft-dynamics-nav/xmlports/x50300"
             }
