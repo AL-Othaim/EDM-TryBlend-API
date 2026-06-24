@@ -170,7 +170,6 @@ function sanitizeXmlValue(value) {
 }
 
 const ConvertJsonOrderToXml = (body) => {
-  // Deep clone to avoid mutating the imported JSON module across requests
   const dataJson = JSON.parse(JSON.stringify(OrderJson));
   const ID = generateGuid();
   const dateTime = new Date().toISOString();
@@ -185,10 +184,6 @@ const ConvertJsonOrderToXml = (body) => {
     StaffId: '1',
     TransDate: dateTime,
     SalesType: 'TAKEAWAY',
-    // NetAmount: body.subtotal || 0,
-    // GrossAmount: body.total || 0,
-    NetAmount: 10,
-    GrossAmount: 10,
     AggregatorOrderID: body.aggregator_order_id,
   };
 
@@ -203,34 +198,33 @@ const ConvertJsonOrderToXml = (body) => {
       LineNo: (index + 1) * 1000,
       LineType: 0,
       Number: sanitizeXmlValue(product.id || ''),
-      // Quantity: product.quantity || 0,
-      // NetAmount: product.total || 0,
-      Quantity: 10,
-      NetAmount: 10,
+      Quantity: product.quantity || 0,
+      NetAmount: product.total || 0,
       VatBusPostingGroup: 'VAT',
       GenBusPostingGroup: 'RETAIL',
       TransDate: dateTime,
       RecommendedItem: false,
-      // Ensure the xmlport namespace is always explicit on each element
       _attributes: { xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300' },
     })) ?? [];
 
-  // Fix 1: iterate products, then their modifiers — not body.products.modifiers
-  // Fix 2: use `productIndex` to compute ParentLineNo correctly (was using undefined `i`)
   dataJson.Envelope.Body.MobilePosSave.mobileTransactionXML.MobileTransactionSubLine =
     body.products?.flatMap((product, productIndex) =>
-      (product.modifiers ?? []).map((modifier, modifierIndex) => ({
-        ...SubLine,
-        Id: ID,
-        LineNo: (productIndex + 1) * 1000 + (modifierIndex + 1),
-        ParentLineNo: (productIndex + 1) * 1000,
-        Quantity: modifier.quantity,
-        Number: sanitizeXmlValue(modifier.id || ''),
-        Price: modifier.total,
-        ModifierSubCode: modifier.id,
-        // Ensure the xmlport namespace is always explicit on each element
-        _attributes: { xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300' },
-      }))
+      (product.modifiers ?? []).map((modifier, modifierIndex) => {
+        const modifierArr = modifier.id?.split(':') || [];
+        const ModifierGroupCode = modifierArr[0];
+        const ModifierSubCode = modifierArr[1];
+        return ({
+          ...SubLine,
+          Id: ID,
+          LineNo: (productIndex + 1) * 1000 + (modifierIndex + 1),
+          ParentLineNo: (productIndex + 1) * 1000,
+          Quantity: modifier.quantity,
+          Number: sanitizeXmlValue(modifier.id || ''),
+          ModifierGroupCode,
+          ModifierSubCode,
+          _attributes: { xmlns: 'urn:microsoft-dynamics-nav/xmlports/x50300' },
+        })
+      })
     ) ?? [];
 
   const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
