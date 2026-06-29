@@ -11,7 +11,6 @@ const {
   login
 } = require('../Controller/AlOthaim');
 
-// Log every request + response on all routes
 router.use(requestLogger);
 
 router.post('/items', authMiddleware, getItems);
