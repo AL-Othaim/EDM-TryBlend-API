@@ -241,39 +241,80 @@ const createSalesOrder = async (req, res) => {
 
     if (!url) {
       return res.status(400).json({
-        status: 'error',
-        error: 'Missing URL'
+        success: false,
+        message: 'Missing URL',
+        order_id: null
       });
     }
-    console.log('AL Othaim', body)
-    const xmlText = ConvertJsonOrderToXml(body);
-    console.log('Request XML Al Othaim: ', xmlText);
 
-    const result = await makeBusinessCentralRequest(
-      url,
-      xmlText,
+    const xmlText = ConvertJsonOrderToXml(body);
+    console.log('Request XML Al Othaim:', xmlText);
+
+    const result = await makeBusinessCentralRequest(url, xmlText,
       {
         SOAPAction: 'urn:microsoft-dynamics-schemas/codeunit/EDM_MobilePosSave',
         'Content-Type': 'application/xml'
       }
     );
 
-    const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
-    const responseJson = JSON.parse(xml2js.xml2json(result.raw, options));
+    console.log('Response XML Al Othaim:', result.raw);
 
-    const soapResult =
-      responseJson['Soap:Envelope']?.['Soap:Body']?.['MobilePosSave_Result'];
+    const { responseCode, errorText, receiptNo } = parseSalesOrderResponse(result.raw);
 
-    const responseCode = soapResult?.responseCode?.['_text'];
-    const errorText = soapResult?.errorText?.['_text'];
+    if (responseCode !== '0000') {
+      return res.status(400).json({ success: false, message: errorText || 'Order creation failed', order_id: receiptNo });
+    }
 
-    if (responseCode !== '0000' && errorText)
-      return res.status(400).json({ status: 'error', error: errorText });
+    return res.status(200).json({ success: true, message: 'Order created successfully', order_id: receiptNo });
 
-    console.log('Response XML Al Othaim: ', result.raw);
-    res.set('Content-Type', 'application/xml');
-    return res.send(result.raw);
-  } catch (error) {
+  } catch (err) {
+    console.error('Al Othaim createSalesOrder error:', err);
+
+    if (err.response?.data) {
+      try {
+        const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
+
+        const responseJson = JSON.parse(xml2js.xml2json(err.response.data, options));
+
+        const fault = responseJson['s:Envelope']?.['s:Body']?.['s:Fault'] || responseJson['Soap:Envelope']?.['Soap:Body']?.['Soap:Fault'];
+
+        const errorText = fault?.detail?.string?._text || fault?.faultstring?._text || err.response.data;
+
+        return res.status(400).json({
+          success: false, message: errorText, order_id: null
+        });
+      } catch (parseError) {
+        console.error('Failed to parse SOAP fault:', parseError);
+      }
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || 'Order creation failed',
+      order_id: null
+    });
+  }
+};
+function parseSalesOrderResponse(rawXml) {
+  const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
+
+  const responseJson = JSON.parse(xml2js.xml2json(rawXml, options));
+
+  const soapResult = responseJson['Soap:Envelope']?.['Soap:Body']?.['MobilePosSave_Result'];
+
+  const transaction = soapResult?.mobileTransactionXML?.MobileTransaction;
+
+  const responseCode = soapResult?.responseCode?._text ?? null;
+  const errorText = soapResult?.errorText?._text ?? null;
+
+  const receiptNo = transaction?.ReceiptNo?._text ?? transaction?.ReceiptNo ?? null;
+
+  return {
+    soapResult, transaction, responseCode, errorText, receiptNo
+  };
+}
+
+/* catch (error) {
     console.log('Al Othaim', error);
     if (error?.response?.data) {
       const options = { compact: true, ignoreComment: true, spaces: 4, fullTagEmptyElement: true };
@@ -282,8 +323,7 @@ const createSalesOrder = async (req, res) => {
       return res.status(400).json({ status: 'error', error: errorText });
     }
     return res.status(error.status || 500).json({ status: 'error', error: error.message });
-  }
-};
+  } */
 
 
 async function getItems(req, res) {
